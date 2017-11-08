@@ -1,0 +1,17 @@
+{
+    "name": "ngochip/micro-jwt",
+    "type": "library",
+    "description": "Yii2 micro service component for auth",
+    "keywords": ["ngochip", "jwt", "yii2"],
+    "license": "MIT",
+
+    "autoload": {
+        "psr-4": {
+            "ngochip\\jwt\\": ""
+        },
+    },
+    "require": {
+        "php": "^5.6 || ^7.0",
+        "sizeg/yii2-jwt": "dev-master"
+    }
+}
