@@ -30,10 +30,12 @@ class Jwt extends Component
 	private $signer;
 	private $keychain;
 	private $sizeGJWT;
+	private $redis;
 
 	CONST PRE_BLACKLIST_KEY = "auth:blackList:";
 
-	public function __construct(){
+	public function init(){
+		parent::init();
 		$this->signer = new Sha256();
     	$this->keychain = new Keychain();
     	$this->sizeGJWT = new SizeGJWT();
@@ -52,6 +54,10 @@ class Jwt extends Component
 		return (string) $this->token;
 	}
 
+	public function getTokenFromHeader(){
+		$token = Yii::$app->request->getHeaders()->get("Authorization");
+		return substr($token,7);
+	}
 	/*
 	*
 	*/
@@ -63,8 +69,17 @@ class Jwt extends Component
 	* verify lại token
 	*/
 	public function verify(){
-		$verify = $this->token->verify($this->signer, $this->keychain->getPublicKey('file://'.$this->publicKey));
-		return $verify;
+		if($this->token == null){
+			$tokenString = $this->getTokenFromHeader();
+			$this->setToken($tokenString);
+		}
+		if($this->_inBlackList()){
+			return false;
+		}
+		if(!$this->_validateToken()){
+			return false;
+		}
+		return true;
 	}
 
 	/*
@@ -73,15 +88,19 @@ class Jwt extends Component
 	public function refreshToken(){
 		$expire 		= $this->getInfo("exp");
 		$iat 			= $this->getInfo('iat'); //time that the token was issue
-		$ttl 			= $this->redis_config['ttl'];
-		$ttlRefresh 	= $this->redis_config['ttl'];
-		$remain 		= time() - $expire;
-		$remainRefreshTime = time() - ($iat + $ttlRefresh);
+		$ttl 			= $this->ttl;
+		$ttlRefresh 	= $this->ttl_refresh;
+		$remain 		=  $expire - time();
+		$remainRefreshTime = ($iat + $ttlRefresh) - time();
 		$info 			= $this->getInfo();
 
-		if($remainRefreshTime <= 0){
+		if($this->_inBlackList()){
+			return false;
+		}
+		if(!$this->_validateRefreshToken()){
 			return false; //hết hạn refresh token
 		}
+
 		if($remain > 0){
 			$this->_addToBlackList();
 		}
@@ -118,14 +137,29 @@ class Jwt extends Component
        	$token = $builder->getToken();
        	return $token;
 	}
+	private function _validateToken($time = null){
+		$data = $this->sizeGJWT->getValidationData();
+		$data->setIssuer(Yii::$app->homeUrl);
+		$validate = $this->token->validate($data);
+		$verify = $this->token->verify($this->signer, $this->keychain->getPublicKey('file://'.$this->publicKey));
+		return ($validate && $verify);
+	}
+	private function _validateRefreshToken(){
+		$expire 		= $this->getInfo("exp");
+		$iat 			= $this->getInfo('iat'); //time that the token was issue
+		$ttl 			= $this->ttl;
+		$ttlRefresh 	= $this->ttl_refresh;
+		$time = time() - ($ttlRefresh - $ttl);
+		return $this->_validateToken($time);
+	}
 
 	private function _initRedis(){
-		$this->Redis = new Redis();
+		$this->redis = new Redis();
 		$config = $this->redis_config;
-		$this->Redis->hostname = isset($config['host']) ? $config['host'] : "localhost";
-		$this->Redis->port = isset($config['port']) ? $config['port'] : 6379;
-		$this->Redis->password = isset($config['password']) ? $config['password'] : null;
-		$this->Redis->database = isset($config['database']) ? $config['database'] : 0;
+		$this->redis->hostname = isset($config['host']) ? $config['host'] : "localhost";
+		$this->redis->port = isset($config['port']) ? $config['port'] : 6379;
+		$this->redis->password = isset($config['password']) ? $config['password'] : null;
+		$this->redis->database = isset($config['database']) ? $config['database'] : 0;
 	}
 
 	private function _getRedisKeyName($key){
@@ -135,14 +169,13 @@ class Jwt extends Component
 		$expire = $this->getInfo("exp");
 		$tokenString = $this->getToken();
 		$keyName = $this->_getRedisKeyName($tokenString);
-		$remain = time() - $expire;
-
-		return $this->Redis->executeCommand("SET", [$keyName, '1','NX','EX',$remain]);
+		$remain = $expire - time();
+		return $this->redis->executeCommand("SET", [$keyName, '1','NX','EX',$remain]);
 	}
 	private function _inBlackList(){
 		$tokenString = $this->getToken();
 		$keyName = $this->_getRedisKeyName($tokenString);
-		return $this->Redis->executeCommand("EXISTS", [$keyName]);
+		return $this->redis->executeCommand("EXISTS", [$keyName]);
 	}
 
 }
