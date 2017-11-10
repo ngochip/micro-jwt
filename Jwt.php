@@ -33,6 +33,7 @@ class Jwt extends Component
 	private $redis;
 
 	CONST PRE_BLACKLIST_KEY = "auth:blackList:";
+	CONST LOG_CATEGORY		= "ngochip-jwt";
 
 	public function init(){
 		parent::init();
@@ -40,6 +41,7 @@ class Jwt extends Component
     	$this->keychain = new Keychain();
     	$this->sizeGJWT = new SizeGJWT();
     	$this->_initRedis();
+    	$this->getTokenFromHeader();
 	}
 
 	/*
@@ -56,12 +58,16 @@ class Jwt extends Component
 
 	public function getTokenFromHeader(){
 		$token = Yii::$app->request->getHeaders()->get("Authorization");
-		return substr($token,7);
+		$this->setToken(substr($token,7));
 	}
 	/*
 	*
 	*/
 	public function setToken($token){
+		$tokenString = (string) $token;
+		if(count(explode(".", $tokenString)) != 3){
+			return false;
+		}
 		$this->token = $this->sizeGJWT->getParser()->parse((string) $token);
 	}
 	/*
@@ -69,13 +75,6 @@ class Jwt extends Component
 	* verify lại token
 	*/
 	public function verify(){
-		if($this->token == null){
-			$tokenString = $this->getTokenFromHeader();
-			$this->setToken($tokenString);
-		}
-		if($this->_inBlackList()){
-			return false;
-		}
 		if(!$this->_validateToken()){
 			return false;
 		}
@@ -87,23 +86,15 @@ class Jwt extends Component
 	*/
 	public function refreshToken(){
 		$expire 		= $this->getInfo("exp");
-		$iat 			= $this->getInfo('iat'); //time that the token was issue
-		$ttl 			= $this->ttl;
-		$ttlRefresh 	= $this->ttl_refresh;
 		$remain 		=  $expire - time();
-		$remainRefreshTime = ($iat + $ttlRefresh) - time();
 		$info 			= $this->getInfo();
 
-		if($this->_inBlackList()){
-			return false;
-		}
 		if(!$this->_validateRefreshToken()){
+			Yii::info("cant not validate token",self::LOG_CATEGORY);
 			return false; //hết hạn refresh token
 		}
 
-		if($remain > 0){
-			$this->_addToBlackList();
-		}
+		$this->_addToBlackList();
 		return $this->getToken($info);
 	}
 	//get claim from token
@@ -138,10 +129,22 @@ class Jwt extends Component
        	return $token;
 	}
 	private function _validateToken($time = null){
+		if($this->_inBlackList()){
+			Yii::info("token in blacklist",self::LOG_CATEGORY);
+			return false;
+		}
 		$data = $this->sizeGJWT->getValidationData();
 		$data->setIssuer(Yii::$app->homeUrl);
+
+		if($time){
+			$data->setCurrentTime($time);
+		}
+
 		$validate = $this->token->validate($data);
 		$verify = $this->token->verify($this->signer, $this->keychain->getPublicKey('file://'.$this->publicKey));
+		if(!$validate || !$verify){
+			Yii::info("validate:{$validate}, verify: {$verify}","authorization");
+		}
 		return ($validate && $verify);
 	}
 	private function _validateRefreshToken(){
@@ -150,6 +153,7 @@ class Jwt extends Component
 		$ttl 			= $this->ttl;
 		$ttlRefresh 	= $this->ttl_refresh;
 		$time = time() - ($ttlRefresh - $ttl);
+		$time = ($time < $iat) ? $iat: $time;
 		return $this->_validateToken($time);
 	}
 
@@ -166,10 +170,11 @@ class Jwt extends Component
 		return self::PRE_BLACKLIST_KEY.md5($key);
 	}
 	private function _addToBlackList(){
-		$expire = $this->getInfo("exp");
+		$IssuedAt = $this->getInfo("iat");
 		$tokenString = $this->getToken();
 		$keyName = $this->_getRedisKeyName($tokenString);
-		$remain = $expire - time();
+		$refreshExpried = $IssuedAt + $this->ttl_refresh;
+		$remain = $refreshExpried - time();
 		return $this->redis->executeCommand("SET", [$keyName, '1','NX','EX',$remain]);
 	}
 	private function _inBlackList(){
@@ -177,6 +182,5 @@ class Jwt extends Component
 		$keyName = $this->_getRedisKeyName($tokenString);
 		return $this->redis->executeCommand("EXISTS", [$keyName]);
 	}
-
 }
 
