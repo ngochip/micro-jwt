@@ -5,6 +5,7 @@ namespace ngochip\jwt;
 use Yii;
 use yii\base\Component;
 use yii\base\InvalidParamException;
+use yii\helpers\BaseUrl as Url;
 use yii\redis\Connection as Redis;
 use sizeg\jwt\Jwt as SizeGJWT;
 use Lcobucci\JWT\Signer\Keychain;
@@ -25,6 +26,7 @@ class Jwt extends Component
 	public $ttl;
 	public $ttl_refresh;
 	public $redis_config;
+	public $issuer;
 
 	private $token;
 	private $signer;
@@ -40,6 +42,8 @@ class Jwt extends Component
 		$this->signer = new Sha256();
     	$this->keychain = new Keychain();
     	$this->sizeGJWT = new SizeGJWT();
+    	$this->issuer = ($this->issuer === null) ? Url::home(true): $this->issuer;
+    	
     	$this->_initRedis();
     	$this->getTokenFromHeader();
 	}
@@ -112,7 +116,7 @@ class Jwt extends Component
 	* private function
 	*/
 	private function _getToken($info, $uid = null){
-    	$builder = $this->sizeGJWT->getBuilder()->setIssuer(Yii::$app->homeUrl)
+    	$builder = $this->sizeGJWT->getBuilder()->setIssuer($this->issuer)
         // ->setAudience('http://example.org')
         ->setIssuedAt(time())
         ->setNotBefore(time())
@@ -134,7 +138,7 @@ class Jwt extends Component
 			return false;
 		}
 		$data = $this->sizeGJWT->getValidationData();
-		$data->setIssuer(Yii::$app->homeUrl);
+		$data->setIssuer($this->issuer);
 
 		if($time){
 			$data->setCurrentTime($time);
@@ -143,7 +147,7 @@ class Jwt extends Component
 		$validate = $this->token->validate($data);
 		$verify = $this->token->verify($this->signer, $this->keychain->getPublicKey('file://'.$this->publicKey));
 		if(!$validate || !$verify){
-			Yii::info("validate:{$validate}, verify: {$verify}","authorization");
+			Yii::info("validate:{$validate}, verify: {$verify}",self::LOG_CATEGORY);
 		}
 		return ($validate && $verify);
 	}
