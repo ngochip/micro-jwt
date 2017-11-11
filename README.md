@@ -39,22 +39,44 @@ openssl rsa -in private.pem -out private_unencrypted.pem -outform PEM
 
 2.Add `jwt` component to your configuration file,
 
+
+In Authorization server:
+
 ```php
 'jwt' => [
       'class' => 'ngochip\jwt\Jwt',
-      'privateKey' 	=> __DIR__.'/../certificate/private.pem', //private key for sign (only setup in authorization server)
-      'publicKey' 	=> __DIR__.'/../certificate/public.pem', //public key for verify in client.
-      'passparse' 	=> '1234', //pass parse private key
-      'ttl' 			=> 60 * 60, //time to live for token
-      'ttl_refresh' 	=> 60 * 90, //time to live for refreshToken
-      'redis_config' 	=> [
-        'host' 	=> '127.0.0.1', // blacklist server address (redis server)
-        'port'	 	=> 6379, //redis port
-        'database' 	=> 10,
-        'password'	=> NULL //password for AUTH redis server
+      'privateKey'  => __DIR__.'/../certificate/private.pem', //private key for sign (only setup in authorization server)
+      'publicKey'   => __DIR__.'/../certificate/public.pem', //public key for verify in client.
+      'passparse'   => '1234', //pass parse private key
+      'ttl'       => 60 * 60, //time to live for token
+      'ttl_refresh'   => 60 * 90, //time to live for refreshToken
+      'redis_config'  => [
+        'host'  => '127.0.0.1', // blacklist server address (redis server)
+        'port'    => 6379, //redis port
+        'database'  => 10,
+        'password'  => NULL //password for AUTH redis server
       ]
   ],
 ```
+
+In Client (other server)
+
+```php
+'jwt' => [
+      'class' => 'ngochip\jwt\Jwt',
+      'publicKey'   => __DIR__.'/../certificate/public.pem', //public key for verify in client.
+      'ttl'       => 60 * 60, //time to live for token
+      'ttl_refresh'   => 60 * 90, //time to live for refreshToken
+      'issuer'        => 'http://auth.domain.com/api/', //Auth Server Address.
+      'redis_config'  => [
+        'host'  => '127.0.0.1', // blacklist server address (redis server)
+        'port'    => 6379, //redis port
+        'database'  => 10,
+        'password'  => NULL //password for AUTH redis server
+      ]
+  ],
+```
+
 
 ### Creating (in Authorization server)
 
