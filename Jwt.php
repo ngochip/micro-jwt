@@ -103,6 +103,9 @@ class Jwt extends Component
 	}
 	//get claim from token
 	public function getInfo($claimName = 'info'){
+		if(!$this->token){
+			return false;
+		}
 		$this->token->getClaims();
 		return $this->token->getClaim($claimName);
 	}
@@ -133,6 +136,9 @@ class Jwt extends Component
        	return $token;
 	}
 	private function _validateToken($time = null){
+		if(!$this->token){
+			return false;
+		}
 		if($this->_inBlackList()){
 			Yii::info("token in blacklist",self::LOG_CATEGORY);
 			return false;
